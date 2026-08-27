@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+typedef struct Error Error;
 typedef struct Object Object;
 typedef struct ObjectClass ObjectClass;
 typedef struct Type Type;
@@ -10,6 +11,8 @@ typedef struct Type Type;
 typedef void (*ClassInit)(ObjectClass *klass);
 typedef void (*InstanceInit)(Object *obj);
 typedef void (*InstanceFinalize)(Object *obj);
+typedef bool (*InstanceRealize)(Object *obj, Error *err);
+typedef void (*InstanceUnrealize)(Object *obj);
 
 typedef struct TypeInfo
 {
@@ -19,6 +22,8 @@ typedef struct TypeInfo
     ClassInit class_init;
     InstanceInit instance_init;
     InstanceFinalize instance_finalize;
+    InstanceRealize instance_realize;
+    InstanceUnrealize instance_unrealize;
 } TypeInfo;
 
 void type_system_init(void);

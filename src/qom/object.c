@@ -37,6 +37,20 @@ static void object_instance_init(Object *obj, Type *type)
     }
 }
 
+static size_t object_type_chain(Object *obj, Type **chain,
+                                size_t chain_capacity)
+{
+    size_t depth = 0;
+
+    for (Type *type = obj->klass->type; type; type = type_get_parent(type))
+    {
+        assert(depth < chain_capacity);
+        chain[depth++] = type;
+    }
+
+    return depth;
+}
+
 Object *object_new(const char *type_name)
 {
     Type *type = type_get_by_name(type_name);
@@ -62,6 +76,9 @@ bool object_is_realized(const Object *obj)
 
 bool object_realize(Object *obj, Error *err)
 {
+    Type *chain[16];
+    size_t depth;
+
     if (!obj)
     {
         error_set(err, "cannot realize null object");
@@ -74,15 +91,41 @@ bool object_realize(Object *obj, Error *err)
         return false;
     }
 
+    depth = object_type_chain(obj, chain, sizeof(chain) / sizeof(chain[0]));
+
+    while (depth)
+    {
+        Type *type = chain[--depth];
+        const TypeInfo *info = type_get_info(type);
+
+        if (info->instance_realize &&
+            !info->instance_realize(obj, err))
+        {
+            return false;
+        }
+    }
+
     obj->state = OBJECT_STATE_REALIZED;
     return true;
 }
 
 void object_unrealize(Object *obj)
 {
+    Type *type;
+
     if (!obj || obj->state != OBJECT_STATE_REALIZED)
     {
         return;
+    }
+
+    for (type = obj->klass->type; type; type = type_get_parent(type))
+    {
+        const TypeInfo *info = type_get_info(type);
+
+        if (info->instance_unrealize)
+        {
+            info->instance_unrealize(obj);
+        }
     }
 
     obj->state = OBJECT_STATE_NEW;

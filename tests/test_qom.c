@@ -6,6 +6,85 @@
 #include "miniqom/property.h"
 #include "miniqom/type.h"
 
+#define TYPE_TEST_LIFECYCLE_PARENT "test-lifecycle-parent"
+#define TYPE_TEST_LIFECYCLE_CHILD "test-lifecycle-child"
+
+typedef struct TestLifecycleObject
+{
+    Object parent_object;
+} TestLifecycleObject;
+
+static char lifecycle_events[16];
+static size_t lifecycle_event_count;
+
+static void lifecycle_events_rest(void)
+{
+    lifecycle_event_count = 0;
+    lifecycle_events[0] = '\0';
+}
+
+static void lifecycle_event_add(char event)
+{
+    assert(lifecycle_event_count + 1 < sizeof(lifecycle_events));
+
+    lifecycle_events[lifecycle_event_count++] = event;
+    lifecycle_events[lifecycle_event_count] = '\0';
+}
+
+static bool test_parent_realize(Object *obj, Error *err)
+{
+    (void)obj;
+    (void)err;
+
+    lifecycle_event_add('P');
+    return true;
+}
+
+static void test_parent_unrealize(Object *obj)
+{
+    (void)obj;
+
+    lifecycle_event_add('p');
+}
+
+static bool test_child_realize(Object *obj, Error *err)
+{
+    (void)obj;
+    (void)err;
+
+    lifecycle_event_add('C');
+    return true;
+}
+
+static void test_child_unrealize(Object *obj)
+{
+    (void)obj;
+
+    lifecycle_event_add('c');
+}
+
+static const TypeInfo test_lifecycle_parent_info = {
+    .name = TYPE_TEST_LIFECYCLE_PARENT,
+    .parent = "object",
+    .instance_size = sizeof(TestLifecycleObject),
+    .instance_realize = test_parent_realize,
+    .instance_unrealize = test_parent_unrealize,
+};
+
+static const TypeInfo test_lifecycle_child_info = {
+    .name = TYPE_TEST_LIFECYCLE_CHILD,
+    .parent = TYPE_TEST_LIFECYCLE_PARENT,
+    .instance_size = sizeof(TestLifecycleObject),
+    .instance_realize = test_child_realize,
+    .instance_unrealize = test_child_unrealize,
+};
+
+static void test_lifecycle_register_types(void)
+{
+    type_register_static(&test_lifecycle_parent_info);
+    type_register_static(&test_lifecycle_child_info);
+}
+
 int main(void)
 {
     Error err;
@@ -16,6 +95,7 @@ int main(void)
 
     type_system_init();
     host_memory_backend_register_types();
+    test_lifecycle_register_types();
 
     error_clear(&err);
     root = object_new("object");
@@ -78,6 +158,25 @@ int main(void)
 
     assert(backend->parent_obj.size == 2ULL * 1024 * 1024 * 1024);
     assert(!strcmp(backend->parent_obj.swap_storage, "file:///swap"));
+
+    error_clear(&err);
+
+    Object *lifecycle_object;
+
+    lifecycle_object = object_new(TYPE_TEST_LIFECYCLE_CHILD);
+    assert(lifecycle_object != NULL);
+
+    lifecycle_events_rest();
+
+    assert(object_realize(lifecycle_object, &err));
+    assert(object_is_realized(lifecycle_object));
+    assert(!strcmp(lifecycle_events, "PC"));
+
+    lifecycle_events_rest();
+
+    object_unrealize(lifecycle_object);
+    assert(!object_is_realized(lifecycle_object));
+    assert(!strcmp(lifecycle_events, "cp"));
 
     object_free(root);
     return 0;
