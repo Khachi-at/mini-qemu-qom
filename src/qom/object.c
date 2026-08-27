@@ -55,6 +55,39 @@ Object *object_new(const char *type_name)
     return obj;
 }
 
+bool object_is_realized(const Object *obj)
+{
+    return obj && obj->state == OBJECT_STATE_REALIZED;
+}
+
+bool object_realize(Object *obj, Error *err)
+{
+    if (!obj)
+    {
+        error_set(err, "cannot realize null object");
+        return false;
+    }
+
+    if (obj->state == OBJECT_STATE_REALIZED)
+    {
+        error_set(err, "object is already realized");
+        return false;
+    }
+
+    obj->state = OBJECT_STATE_REALIZED;
+    return true;
+}
+
+void object_unrealize(Object *obj)
+{
+    if (!obj || obj->state != OBJECT_STATE_REALIZED)
+    {
+        return;
+    }
+
+    obj->state = OBJECT_STATE_NEW;
+}
+
 void object_free(Object *obj)
 {
     Type *type;
