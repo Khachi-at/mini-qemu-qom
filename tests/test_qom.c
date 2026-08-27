@@ -8,6 +8,8 @@
 
 #define TYPE_TEST_LIFECYCLE_PARENT "test-lifecycle-parent"
 #define TYPE_TEST_LIFECYCLE_CHILD "test-lifecycle-child"
+#define TYPE_TEST_LIFECYCLE_FAILING_CHILD \
+    "test-lifecycle-failing-child"
 
 typedef struct TestLifecycleObject
 {
@@ -63,6 +65,22 @@ static void test_child_unrealize(Object *obj)
     lifecycle_event_add('c');
 }
 
+static bool test_failing_child_realize(Object *obj, Error *err)
+{
+    (void)obj;
+
+    lifecycle_event_add('F');
+    error_set(err, "child realize failed");
+    return false;
+}
+
+static void test_failing_child_unrealize(Object *obj)
+{
+    (void)obj;
+
+    lifecycle_event_add('x');
+}
+
 static const TypeInfo test_lifecycle_parent_info = {
     .name = TYPE_TEST_LIFECYCLE_PARENT,
     .parent = "object",
@@ -79,10 +97,19 @@ static const TypeInfo test_lifecycle_child_info = {
     .instance_unrealize = test_child_unrealize,
 };
 
+static const TypeInfo test_lifecycle_failing_child_info = {
+    .name = TYPE_TEST_LIFECYCLE_FAILING_CHILD,
+    .parent = TYPE_TEST_LIFECYCLE_PARENT,
+    .instance_size = sizeof(TestLifecycleObject),
+    .instance_realize = test_failing_child_realize,
+    .instance_unrealize = test_failing_child_unrealize,
+};
+
 static void test_lifecycle_register_types(void)
 {
     type_register_static(&test_lifecycle_parent_info);
     type_register_static(&test_lifecycle_child_info);
+    type_register_static(&test_lifecycle_failing_child_info);
 }
 
 int main(void)
@@ -158,9 +185,8 @@ int main(void)
 
     assert(backend->parent_obj.size == 2ULL * 1024 * 1024 * 1024);
     assert(!strcmp(backend->parent_obj.swap_storage, "file:///swap"));
-    object_free(root);
 
-    // ===============
+    // ====== Test realize callbacks ======
     error_clear(&err);
 
     Object *lifecycle_object;
@@ -181,5 +207,24 @@ int main(void)
     assert(!strcmp(lifecycle_events, "cp"));
 
     object_free(lifecycle_object);
+
+    // ===== Test realize failed ======
+    Object *failing_object;
+
+    failing_object = object_new(TYPE_TEST_LIFECYCLE_FAILING_CHILD);
+    assert(failing_object != NULL);
+
+    lifecycle_events_rest();
+    error_clear(&err);
+
+    assert(!object_realize(failing_object, &err));
+    assert(!strcmp(err.message, "child realize failed"));
+    assert(!object_is_realized(failing_object));
+    assert(!strcmp(lifecycle_events, "PFp"));
+
+    object_free(failing_object);
+
+    // ======= Release test resources ======
+    object_free(root);
     return 0;
 }

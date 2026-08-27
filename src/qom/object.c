@@ -77,7 +77,9 @@ bool object_is_realized(const Object *obj)
 bool object_realize(Object *obj, Error *err)
 {
     Type *chain[16];
+    Type *realized_types[16];
     size_t depth;
+    size_t realized_count = 0;
 
     if (!obj)
     {
@@ -101,7 +103,24 @@ bool object_realize(Object *obj, Error *err)
         if (info->instance_realize &&
             !info->instance_realize(obj, err))
         {
+            while (realized_count)
+            {
+                Type *realized_type = realized_types[--realized_count];
+                const TypeInfo *realized_info =
+                    type_get_info(realized_type);
+
+                if (realized_info->instance_unrealize)
+                {
+                    realized_info->instance_unrealize(obj);
+                }
+            }
+
             return false;
+        }
+
+        if (info->instance_realize)
+        {
+            realized_types[realized_count++] = type;
         }
     }
 
