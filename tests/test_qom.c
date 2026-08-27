@@ -25,6 +25,15 @@ int main(void)
     assert(object_is_instance_of(mem0, TYPE_MEMORY_BACKEND_MEMFD));
     assert(object_is_instance_of(mem0, TYPE_MEMORY_BACKEND));
     assert(object_is_instance_of(mem0, "object"));
+    assert(!strcmp(object_get_type_name(mem0),
+                   TYPE_MEMORY_BACKEND_MEMFD));
+
+    assert(object_is_a(mem0, TYPE_MEMORY_BACKEND_MEMFD));
+    assert(object_is_a(mem0, TYPE_MEMORY_BACKEND));
+    assert(object_is_a(mem0, "object"));
+    assert(!object_is_a(mem0, "unknown-type"));
+    assert(object_get_type_name(NULL) == NULL);
+    assert(!object_is_a(NULL, "object"));
 
     backend = (HostMemoryBackendMemfd *)mem0;
     assert(backend->seal);

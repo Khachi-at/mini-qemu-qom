@@ -23,6 +23,9 @@ void object_free(Object *obj);
 
 bool object_is_instance_of(const Object *obj, const char *type_name);
 
+const char *object_get_type_name(const Object *obj);
+bool object_is_a(const Object *obj, const char *type_name);
+
 bool object_add_child(Object *parent, const char *name,
                       Object *child, Error *err);
 
