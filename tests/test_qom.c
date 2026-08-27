@@ -158,7 +158,9 @@ int main(void)
 
     assert(backend->parent_obj.size == 2ULL * 1024 * 1024 * 1024);
     assert(!strcmp(backend->parent_obj.swap_storage, "file:///swap"));
+    object_free(root);
 
+    // ===============
     error_clear(&err);
 
     Object *lifecycle_object;
@@ -178,6 +180,6 @@ int main(void)
     assert(!object_is_realized(lifecycle_object));
     assert(!strcmp(lifecycle_events, "cp"));
 
-    object_free(root);
+    object_free(lifecycle_object);
     return 0;
 }
