@@ -35,6 +35,29 @@ int main(void)
     assert(object_get_type_name(NULL) == NULL);
     assert(!object_is_a(NULL, "object"));
 
+    error_clear(&err);
+
+    assert(!object_is_realized(mem0));
+
+    assert(object_realize(mem0, &err));
+    assert(object_is_realized(mem0));
+
+    assert(!object_realize(mem0, &err));
+    assert(!strcmp(err.message, "object is already realized"));
+    assert(object_is_realized(mem0));
+
+    object_unrealize(mem0);
+    assert(!object_is_realized(mem0));
+
+    object_unrealize(mem0);
+    assert(!object_is_realized(mem0));
+
+    assert(object_realize(mem0, &err));
+    assert(object_is_realized(mem0));
+
+    object_unrealize(mem0);
+    assert(!object_is_realized(mem0));
+
     backend = (HostMemoryBackendMemfd *)mem0;
     assert(backend->seal);
     assert(backend->parent_obj.share);
