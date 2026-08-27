@@ -83,9 +83,26 @@ void object_free(Object *obj)
     free(obj);
 }
 
-bool object_is_instance_of(const Object *obj, const char *type_name)
+const char *object_get_type_name(const Object *obj)
 {
-    for (Type *type = obj->klass->type; type; type = type_get_parent(type))
+    if (!obj || !obj->klass || !obj->klass->type)
+    {
+        return NULL;
+    }
+
+    return type_get_info(obj->klass->type)->name;
+}
+
+bool object_is_a(const Object *obj, const char *type_name)
+{
+    Type *type;
+
+    if (!obj || !type_name || !obj->klass || !obj->klass->type)
+    {
+        return false;
+    }
+
+    for (type = obj->klass->type; type; type = type_get_parent(type))
     {
         if (!strcmp(type_get_info(type)->name, type_name))
         {
@@ -94,6 +111,11 @@ bool object_is_instance_of(const Object *obj, const char *type_name)
     }
 
     return false;
+}
+
+bool object_is_instance_of(const Object *obj, const char *type_name)
+{
+    return object_is_a(obj, type_name);
 }
 
 bool object_add_child(Object *parent, const char *name,

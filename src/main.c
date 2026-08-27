@@ -16,7 +16,7 @@ static void dump_tree(const Object *obj, unsigned depth)
 
     printf("%s (%s)\n",
            obj->name ? obj->name : "<root>",
-           type_get_info(obj->klass->type)->name);
+           object_get_type_name(obj));
 
     for (size_t i = 0; i < obj->child_count; i++)
     {
