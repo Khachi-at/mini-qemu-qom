@@ -24,12 +24,14 @@ typedef union PropertyValue
 } PropertyValue;
 
 typedef bool (*PropertySetter)(Object *obj, PropertyValue value, Error *err);
+typedef bool (*PropertyGetter)(Object *obj, PropertyValue *value, Error *err);
 
 typedef struct Property
 {
     const char *name;
     PropertyType type;
     PropertySetter set;
+    PropertyGetter get;
 } Property;
 
 struct ObjectClass
@@ -42,10 +44,18 @@ struct ObjectClass
 ObjectClass *object_class_new(Type *type);
 void object_class_free(ObjectClass *klass);
 
-void object_class_property_add(ObjectClass *klass, const char *name,
-                               PropertyType type, PropertySetter set);
+void object_class_property_add(ObjectClass *klass,
+                               const char *name,
+                               PropertyType type,
+                               PropertySetter set,
+                               PropertyGetter get);
 
 bool object_property_set_from_string(Object *obj, const char *name,
                                      const char *value, Error *err);
+
+bool object_property_get(Object *obj,
+                         const char *name,
+                         PropertyValue *value,
+                         Error *err);
 
 #endif

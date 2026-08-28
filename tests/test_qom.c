@@ -186,6 +186,31 @@ int main(void)
     assert(backend->parent_obj.size == 2ULL * 1024 * 1024 * 1024);
     assert(!strcmp(backend->parent_obj.swap_storage, "file:///swap"));
 
+    // ====== Test property ======
+    PropertyValue property_value;
+
+    assert(object_property_get(mem0, "size",
+                               &property_value, &err));
+    assert(property_value.u64 == 2ULL * 1024 * 1024 * 1024);
+
+    assert(object_property_get(mem0, "mmoc",
+                               &property_value, &err));
+    assert(property_value.b);
+
+    assert(object_property_get(mem0, "share",
+                               &property_value, &err));
+    assert(property_value.b);
+
+    assert(object_property_get(mem0, "swap-storage",
+                               &property_value, &err));
+    assert(!strcmp(property_value.str, "file:///swap"));
+
+    error_clear(&err);
+
+    assert(!object_property_get(mem0, "unknown-property",
+                                &property_value, &err));
+    assert(!strcmp(err.message, "property not found"));
+
     // ====== Test realize callbacks ======
     error_clear(&err);
 
