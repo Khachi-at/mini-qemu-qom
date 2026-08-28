@@ -16,10 +16,34 @@ static bool memfd_set_hugetlb(Object *obj, PropertyValue value, Error *err)
     return true;
 }
 
+static bool memfd_get_seal(Object *obj, PropertyValue *value, Error *err)
+{
+    (void)err;
+
+    value->b = ((HostMemoryBackendMemfd *)obj)->seal;
+    return true;
+}
+
+static bool memfd_get_hugetlb(Object *obj, PropertyValue *value, Error *err)
+{
+    (void)err;
+
+    value->b = ((HostMemoryBackendMemfd *)obj)->hugetlb;
+    return true;
+}
+
 static void memory_backend_memfd_class_init(ObjectClass *klass)
 {
-    object_class_property_add(klass, "seal", PROP_BOOL, memfd_set_seal);
-    object_class_property_add(klass, "hugetlb", PROP_BOOL, memfd_set_hugetlb);
+    object_class_property_add(klass,
+                              "seal",
+                              PROP_BOOL,
+                              memfd_set_seal,
+                              memfd_get_seal);
+    object_class_property_add(klass,
+                              "hugetlb",
+                              PROP_BOOL,
+                              memfd_set_hugetlb,
+                              memfd_get_hugetlb);
 }
 
 static void memory_backend_memfd_instance_init(Object *obj)

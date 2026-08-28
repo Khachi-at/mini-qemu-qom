@@ -61,13 +61,62 @@ static bool backend_set_swap_storage(Object *obj, PropertyValue value,
     return true;
 }
 
+static bool backend_get_size(Object *obj, PropertyValue *value, Error *err)
+{
+    (void)err;
+
+    value->u64 = ((HostMemoryBackend *)obj)->size;
+    return true;
+}
+
+static bool backend_get_share(Object *obj, PropertyValue *value, Error *err)
+{
+    (void)err;
+
+    value->b = ((HostMemoryBackend *)obj)->share;
+    return true;
+}
+
+static bool backend_get_mmoc(Object *obj, PropertyValue *value, Error *err)
+{
+    (void)err;
+
+    value->b = ((HostMemoryBackend *)obj)->mmoc;
+    return true;
+}
+
+static bool backend_get_swap_storage(Object *obj,
+                                     PropertyValue *value,
+                                     Error *err)
+{
+    (void)err;
+
+    value->str = ((HostMemoryBackend *)obj)->swap_storage;
+    return true;
+}
+
 static void memory_backend_class_init(ObjectClass *klass)
 {
-    object_class_property_add(klass, "size", PROP_U64, backend_set_size);
-    object_class_property_add(klass, "share", PROP_BOOL, backend_set_share);
-    object_class_property_add(klass, "mmoc", PROP_BOOL, backend_set_mmoc);
-    object_class_property_add(klass, "swap-storage", PROP_STRING,
-                              backend_set_swap_storage);
+    object_class_property_add(klass,
+                              "size",
+                              PROP_U64,
+                              backend_set_size,
+                              backend_get_size);
+    object_class_property_add(klass,
+                              "share",
+                              PROP_BOOL,
+                              backend_set_share,
+                              backend_get_share);
+    object_class_property_add(klass,
+                              "mmoc",
+                              PROP_BOOL,
+                              backend_set_mmoc,
+                              backend_get_mmoc);
+    object_class_property_add(klass,
+                              "swap-storage",
+                              PROP_STRING,
+                              backend_set_swap_storage,
+                              backend_get_swap_storage);
 }
 
 static void memory_backend_instance_init(Object *obj)

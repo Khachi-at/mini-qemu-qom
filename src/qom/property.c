@@ -21,8 +21,11 @@ void object_class_free(ObjectClass *klass)
     free(klass);
 }
 
-void object_class_property_add(ObjectClass *klass, const char *name,
-                               PropertyType type, PropertySetter set)
+void object_class_property_add(ObjectClass *klass,
+                               const char *name,
+                               PropertyType type,
+                               PropertySetter set,
+                               PropertyGetter get)
 {
     assert(klass->property_count < MINIQOM_MAX_PROPERTIES);
 
@@ -30,6 +33,7 @@ void object_class_property_add(ObjectClass *klass, const char *name,
         .name = name,
         .type = type,
         .set = set,
+        .get = get,
     };
 }
 
@@ -145,4 +149,33 @@ bool object_property_set_from_string(Object *obj, const char *name,
     }
 
     return property->set(obj, value, err);
+}
+
+bool object_property_get(Object *obj,
+                         const char *name,
+                         PropertyValue *value,
+                         Error *err)
+{
+    const Property *property;
+
+    if (!obj || !name || !value)
+    {
+        error_set(err, "invalid property get arguments");
+        return false;
+    }
+
+    property = object_property_find(obj, name);
+
+    if (!property)
+    {
+        error_set(err, "property not found");
+        return false;
+    }
+
+    if (!property->get)
+    {
+        error_set(err, "property is not readable");
+        return false;
+    }
+    return property->get(obj, value, err);
 }
