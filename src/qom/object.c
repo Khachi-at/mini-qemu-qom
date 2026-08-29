@@ -213,6 +213,36 @@ bool object_is_instance_of(const Object *obj, const char *type_name)
     return object_is_a(obj, type_name);
 }
 
+Object *object_get_parent(const Object *obj)
+{
+    return obj ? obj->parent : NULL;
+}
+
+const char *object_get_name(const Object *obj)
+{
+    if (!obj || !obj->name)
+    {
+        return "";
+    }
+
+    return obj->name;
+}
+
+size_t object_get_child_count(const Object *obj)
+{
+    return obj ? obj->child_count : 0;
+}
+
+Object *object_get_child(const Object *obj, size_t index)
+{
+    if (!obj || index >= obj->child_count)
+    {
+        return NULL;
+    }
+
+    return obj->children[index];
+}
+
 bool object_add_child(Object *parent, const char *name,
                       Object *child, Error *err)
 {
@@ -237,8 +267,13 @@ bool object_add_child(Object *parent, const char *name,
     return true;
 }
 
-static Object *object_find_child(Object *obj, const char *name)
+Object *object_find_child(Object *obj, const char *name)
 {
+    if (!obj || !name)
+    {
+        return NULL;
+    }
+
     for (size_t i = 0; i < obj->child_count; i++)
     {
         if (!strcmp(obj->children[i]->name, name))

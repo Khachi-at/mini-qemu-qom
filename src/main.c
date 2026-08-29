@@ -15,12 +15,12 @@ static void dump_tree(const Object *obj, unsigned depth)
     }
 
     printf("%s (%s)\n",
-           obj->name ? obj->name : "<root>",
+           object_get_name(obj),
            object_get_type_name(obj));
 
     for (size_t i = 0; i < obj->child_count; i++)
     {
-        dump_tree(obj->children[i], depth + 1);
+        dump_tree(object_get_child(obj, i), depth + 1);
     }
 }
 
