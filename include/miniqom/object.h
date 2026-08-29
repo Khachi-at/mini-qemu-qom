@@ -37,6 +37,12 @@ bool object_realize(Object *obj, Error *err);
 void object_unrealize(Object *obj);
 bool object_is_realized(const Object *obj);
 
+Object *object_get_parent(const Object *obj);
+const char *object_get_name(const Object *obj);
+size_t object_get_child_count(const Object *obj);
+Object *object_get_child(const Object *obj, size_t index);
+Object *object_find_child(Object *parent, const char *name);
+
 bool object_add_child(Object *parent, const char *name,
                       Object *child, Error *err);
 

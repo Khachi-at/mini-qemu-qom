@@ -307,6 +307,35 @@ static void test_object_tree(void)
     assert(object_add_child(objects, "mem0", mem0, &err));
     assert(object_resolve_path(root, "/objects/mem0") == mem0);
 
+    assert(object_get_parent(objects) == root);
+    assert(object_get_parent(mem0) == objects);
+
+    assert(!strcmp(object_get_name(root), ""));
+    assert(!strcmp(object_get_name(objects), "objects"));
+    assert(!strcmp(object_get_name(mem0), "mem0"));
+
+    assert(object_get_child_count(root) == 1);
+    assert(object_get_child_count(objects) == 1);
+    assert(object_get_child_count(mem0) == 0);
+
+    assert(object_get_child(root, 0) == objects);
+    assert(object_get_child(objects, 0) == mem0);
+    assert(object_get_child(mem0, 0) == NULL);
+
+    assert(object_find_child(root, "objects") == objects);
+    assert(object_find_child(objects, "mem0") == mem0);
+    assert(object_find_child(root, "missing") == NULL);
+
+    assert(object_get_parent(NULL) == NULL);
+    assert(!strcmp(object_get_name(NULL), ""));
+    assert(object_get_child_count(NULL) == 0);
+    assert(object_get_child(NULL, 0) == NULL);
+    assert(object_find_child(NULL, "objects") == NULL);
+    assert(object_find_child(root, NULL) == NULL);
+
+    assert(object_get_child(root, 1) == NULL);
+    assert(object_get_child(objects, 1) == NULL);
+
     object_free(root);
 }
 
