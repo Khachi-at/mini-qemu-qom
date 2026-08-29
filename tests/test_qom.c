@@ -1,6 +1,8 @@
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
+#include "miniqom/error.h"
 #include "miniqom/memory.h"
 #include "miniqom/object.h"
 #include "miniqom/property.h"
@@ -186,9 +188,36 @@ int main(void)
     assert(backend->parent_obj.size == 2ULL * 1024 * 1024 * 1024);
     assert(!strcmp(backend->parent_obj.swap_storage, "file:///swap"));
 
-    // ====== Test property ======
-    PropertyValue property_value;
+    // ====== Freeze properties ======
+    //
+    Object *property_object;
+    property_object = object_new(TYPE_MEMORY_BACKEND_MEMFD);
+    assert(property_object != NULL);
 
+    PropertyValue property_value;
+    error_clear(&err);
+
+    assert(object_property_set_from_string(property_object,
+                                           "size",
+                                           "2G",
+                                           &err));
+
+    assert(object_realize(property_object, &err));
+    assert(object_is_realized(property_object));
+
+    assert(!object_property_set_from_string(property_object,
+                                            "size", "4G",
+                                            &err));
+
+    assert(!strcmp(err.message, "object is already realized"));
+
+    assert(object_property_get(property_object,
+                               "size",
+                               &property_value,
+                               &err));
+
+    assert(property_value.u64 == 2ULL * 1024 * 1024 * 1024);
+    // ====== Test property ======
     assert(object_property_get(mem0, "size",
                                &property_value, &err));
     assert(property_value.u64 == 2ULL * 1024 * 1024 * 1024);
