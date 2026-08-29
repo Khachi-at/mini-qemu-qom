@@ -1,10 +1,13 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "miniqom/property.h"
+#include "miniqom/error.h"
+#include "miniqom/object.h"
 #include "miniqom/type.h"
 
 ObjectClass *object_class_new(Type *type)
@@ -116,8 +119,22 @@ static bool parse_u64(const char *text, uint64_t *value)
 bool object_property_set_from_string(Object *obj, const char *name,
                                      const char *text, Error *err)
 {
-    const Property *property = object_property_find(obj, name);
+    const Property *property;
     PropertyValue value = {0};
+
+    if (!obj || !name || !text)
+    {
+        error_set(err, "invalid property set arguments");
+        return false;
+    }
+
+    if (object_is_realized(obj))
+    {
+        error_set(err, "object is already realized");
+        return false;
+    }
+
+    property = object_property_find(obj, name);
 
     if (!property)
     {
