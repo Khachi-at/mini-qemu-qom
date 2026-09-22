@@ -243,10 +243,40 @@ Object *object_get_child(const Object *obj, size_t index)
     return obj->children[index];
 }
 
+static bool object_is_ancestor(const Object *ancestor,
+                               const Object *obj)
+{
+    for (const Object *current = obj;
+         current;
+         current = current->parent)
+    {
+        if (current == ancestor)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool object_add_child(Object *parent, const char *name,
                       Object *child, Error *err)
 {
-    if (child->parent || parent->child_count == MINIQOM_MAX_CHILDREN)
+    if (!parent || !name || !child)
+    {
+        error_set(err, "invalid child insertion");
+        return false;
+    }
+
+    if (name[0] == '\0' || strchr(name, '/'))
+    {
+        error_set(err, "invalid child name");
+        return false;
+    }
+
+    if (child->parent ||
+        parent->child_count == MINIQOM_MAX_CHILDREN ||
+        object_is_ancestor(child, parent))
     {
         error_set(err, "invalid child insertion");
         return false;
@@ -286,6 +316,11 @@ Object *object_find_child(Object *obj, const char *name)
 
 Object *object_resolve_path(Object *root, const char *path)
 {
+    if (!root || !path || *path != '/')
+    {
+        return NULL;
+    }
+
     Object *current = root;
     const char *cursor = path;
 

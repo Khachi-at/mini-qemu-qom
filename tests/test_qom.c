@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "miniqom/error.h"
 #include "miniqom/memory.h"
@@ -339,6 +340,110 @@ static void test_object_tree(void)
     object_free(root);
 }
 
+static void test_object_tree_boundaries(void)
+{
+    Error err;
+    Object *root = object_new("object");
+    Object *child = object_new("object");
+
+    assert(root != NULL);
+    assert(child != NULL);
+
+    error_clear(&err);
+
+    assert(!object_add_child(NULL, "child", child, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    error_clear(&err);
+
+    assert(!object_add_child(root, NULL, child, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    error_clear(&err);
+
+    assert(!object_add_child(root, "child", NULL, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    error_clear(&err);
+
+    assert(!object_add_child(root, "", child, &err));
+    assert(!strcmp(err.message, "invalid child name"));
+
+    error_clear(&err);
+
+    assert(!object_add_child(root, "objects/mem0", child, &err));
+    assert(!strcmp(err.message, "invalid child name"));
+
+    Object *other_parent = object_new("object");
+    Object *duplicate = object_new("object");
+
+    assert(other_parent != NULL);
+    assert(duplicate != NULL);
+
+    error_clear(&err);
+
+    assert(object_add_child(root, "child", child, &err));
+
+    assert(!object_add_child(other_parent, "child2", child, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    error_clear(&err);
+
+    assert(!object_add_child(root, "child", duplicate, &err));
+    assert(!strcmp(err.message, "duplicate child name"));
+
+    object_free(duplicate);
+    object_free(other_parent);
+
+    error_clear(&err);
+
+    assert(!object_add_child(root, "self", root, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    error_clear(&err);
+
+    assert(!object_add_child(child, "root", root, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    object_free(root);
+}
+
+static void test_object_tree_capacity(void)
+{
+    Error err;
+    Object *root = object_new("object");
+    Object *extra;
+    char name[32];
+
+    assert(root != NULL);
+    error_clear(&err);
+
+    for (size_t i = 0; i < MINIQOM_MAX_CHILDREN; i++)
+    {
+        Object *child = object_new("object");
+
+        assert(child != NULL);
+
+        snprintf(name, sizeof(name), "child-%zu", i);
+        assert(object_add_child(root, name, child, &err));
+    }
+
+    assert(object_get_child_count(root) == MINIQOM_MAX_CHILDREN);
+
+    extra = object_new("object");
+    assert(extra != NULL);
+
+    assert(!object_add_child(root, "extra", extra, &err));
+    assert(!strcmp(err.message, "invalid child insertion"));
+
+    assert(object_resolve_path(NULL, "/") == NULL);
+    assert(object_resolve_path(root, NULL) == NULL);
+    assert(object_resolve_path(root, "objects/mem0") == NULL);
+
+    object_free(extra);
+    object_free(root);
+}
+
 int main(void)
 {
     type_system_init();
@@ -353,6 +458,8 @@ int main(void)
     test_inherited_lifecycle_callbacks();
     test_realize_failure_rollback();
     test_object_tree();
+    test_object_tree_boundaries();
+    test_object_tree_capacity();
 
     return 0;
 }
