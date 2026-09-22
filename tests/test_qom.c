@@ -7,6 +7,7 @@
 #include "miniqom/object.h"
 #include "miniqom/property.h"
 #include "miniqom/type.h"
+#include "miniqom/memory_region.h"
 
 #define TYPE_TEST_LIFECYCLE_PARENT "test-lifecycle-parent"
 #define TYPE_TEST_LIFECYCLE_CHILD "test-lifecycle-child"
@@ -444,6 +445,97 @@ static void test_object_tree_capacity(void)
     object_free(root);
 }
 
+typedef struct TestRegisterDevice
+{
+    uint32_t control;
+    uint32_t status;
+} TestRegisterDevice;
+
+static uint64_t test_register_read(void *opaque,
+                                   uint64_t offset,
+                                   unsigned size)
+{
+    TestRegisterDevice *device = opaque;
+
+    assert(size == 4);
+    switch (offset)
+    {
+    case 0x00:
+        return device->control;
+
+    case 0x04:
+        return device->status;
+
+    default:
+        assert(false);
+    }
+}
+
+static bool test_register_write(void *opaque,
+                                uint64_t offset,
+                                unsigned size,
+                                uint64_t value,
+                                Error *err)
+{
+    TestRegisterDevice *device = opaque;
+
+    assert(size == 4);
+
+    switch (offset)
+    {
+    case 0x00:
+        device->control = (uint32_t)value;
+        return true;
+    case 0x04:
+        error_set(err, "status register is read-only");
+        return false;
+
+    default:
+        error_set(err, "invalid register offset");
+        return false;
+    }
+}
+
+static const MemoryRegionOps test_register_ops = {
+    .read = test_register_read,
+    .write = test_register_write,
+};
+
+static void test_memory_region_io(void)
+{
+    Error err;
+    MemoryRegion region;
+    TestRegisterDevice device = {
+        .control = 0,
+        .status = 0x12345678,
+    };
+    uint64_t value;
+
+    memory_region_init_io(&region, 0x100, &test_register_ops, &device);
+
+    error_clear(&err);
+
+    assert(memory_region_write(&region, 0x00, 4, 0xdeadbeef, &err));
+
+    assert(memory_region_read(&region, 0x00, 4, &value, &err));
+
+    assert(value == 0xdeadbeef);
+    assert(device.control == 0xdeadbeef);
+
+    assert(memory_region_read(&region,
+                              0x04,
+                              4,
+                              &value,
+                              &err));
+
+    assert(value == 0x12345678);
+
+    error_clear(&err);
+    assert(!memory_region_write(&region, 0x04, 4, 0xffffffff, &err));
+    assert(!strcmp(err.message, "status register is read-only"));
+    assert(device.status == 0x12345678);
+}
+
 int main(void)
 {
     type_system_init();
@@ -460,6 +552,7 @@ int main(void)
     test_object_tree();
     test_object_tree_boundaries();
     test_object_tree_capacity();
+    test_memory_region_io();
 
     return 0;
 }

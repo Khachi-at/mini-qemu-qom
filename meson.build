@@ -8,11 +8,12 @@ project(
 inc = include_directories('include')
 
 core_sources = files(
-    'src/qom/type.c',
-    'src/qom/object.c',
-    'src/qom/property.c',
     'src/memory/hostmem.c',
     'src/memory/hostmem_memfd.c',
+    'src/memory/memory_region.c',
+    'src/qom/object.c',
+    'src/qom/property.c',
+    'src/qom/type.c',
 )
 
 core = static_library('miniqom', core_sources, include_directories: inc)
