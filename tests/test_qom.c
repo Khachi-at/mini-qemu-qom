@@ -8,6 +8,7 @@
 #include "miniqom/property.h"
 #include "miniqom/type.h"
 #include "miniqom/memory_region.h"
+#include "miniqom/address_space.h"
 
 #define TYPE_TEST_LIFECYCLE_PARENT "test-lifecycle-parent"
 #define TYPE_TEST_LIFECYCLE_CHILD "test-lifecycle-child"
@@ -536,6 +537,22 @@ static void test_memory_region_io(void)
     assert(device.status == 0x12345678);
 }
 
+static void test_address_space_translation(void)
+{
+    Error err;
+    MemoryRegion region;
+    TestRegisterDevice device = {.status = 0x12345678};
+    AddressSpace space = {.base = 0x1000, .region = &region};
+    uint64_t offset, value;
+
+    error_clear(&err);
+    memory_region_init_io(&region, 8, &test_register_ops, &device);
+    assert(address_space_translate(&space, 0x1004, 4, &offset, &err));
+    assert(offset == 4);
+    assert(memory_region_read(space.region, offset, 4, &value, &err));
+    assert(value == 0x12345678);
+}
+
 int main(void)
 {
     type_system_init();
@@ -553,6 +570,7 @@ int main(void)
     test_object_tree_boundaries();
     test_object_tree_capacity();
     test_memory_region_io();
+    test_address_space_translation();
 
     return 0;
 }

@@ -8,6 +8,7 @@ project(
 inc = include_directories('include')
 
 core_sources = files(
+    'src/memory/address_space.c',
     'src/memory/hostmem.c',
     'src/memory/hostmem_memfd.c',
     'src/memory/memory_region.c',
