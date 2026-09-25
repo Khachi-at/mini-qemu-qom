@@ -553,6 +553,60 @@ static void test_address_space_translation(void)
     assert(value == 0x12345678);
 }
 
+static void test_address_space_boundaries(void)
+{
+    static const struct
+    {
+        uint64_t base;
+        uint64_t length;
+        uint64_t address;
+        unsigned size;
+        bool valid;
+        uint64_t expected_offset;
+    } cases[] = {
+        /* First byte, last byte, and whole region. */
+        {0x1000, 8, 0x1000, 1, true, 0},
+        {0x1000, 8, 0x1007, 1, true, 7},
+        {0x1000, 8, 0x1000, 8, true, 0},
+
+        /* Before, after, and crossing the region boundary. */
+        {0x1000, 8, 0x0fff, 1, false, 0},
+        {0x1000, 8, 0x1008, 1, false, 0},
+        {0x1000, 8, 0x1004, 8, false, 0},
+        {0x1000, 0, 0x1000, 1, false, 0},
+
+        /* A region ending at UINT64_MAX is valid. */
+        {UINT64_MAX - 7, 8, UINT64_MAX, 1, true, 7},
+
+        /* The access or mapping must not wrap around. */
+        {UINT64_MAX - 7, 8, UINT64_MAX, 2, false, 0},
+        {UINT64_MAX - 3, 8, UINT64_MAX - 3, 1, false, 0},
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        Error err;
+        MemoryRegion region = {.size = cases[i].length};
+        AddressSpace space = {.base = cases[i].base, .region = &region};
+        uint64_t offset = UINT64_MAX;
+
+        error_clear(&err);
+        bool ok = address_space_translate(
+            &space, cases[i].address, cases[i].size, &offset, &err);
+
+        assert(ok == cases[i].valid);
+        if (ok)
+        {
+            assert(offset == cases[i].expected_offset);
+        }
+        else
+        {
+            assert(!strcmp(err.message, "memory access out of bounds"));
+            assert(offset == UINT64_MAX);
+        }
+    }
+}
+
 int main(void)
 {
     type_system_init();
@@ -571,6 +625,7 @@ int main(void)
     test_object_tree_capacity();
     test_memory_region_io();
     test_address_space_translation();
+    test_address_space_boundaries();
 
     return 0;
 }
