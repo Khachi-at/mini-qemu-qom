@@ -1,4 +1,5 @@
 #include "miniqom/address_space.h"
+#include "miniqom/memory_region.h"
 
 bool address_space_translate(const AddressSpace *space,
                              uint64_t address, unsigned size,
@@ -21,4 +22,36 @@ bool address_space_translate(const AddressSpace *space,
 
     *offset = address - space->base;
     return true;
+}
+
+bool address_space_read(const AddressSpace *space,
+                        uint64_t address,
+                        unsigned size,
+                        uint64_t *value,
+                        Error *err)
+{
+    uint64_t offset;
+
+    if (!address_space_translate(space, address, size, &offset, err))
+    {
+        return false;
+    }
+
+    return memory_region_read(space->region, offset, size, value, err);
+}
+
+bool address_space_write(const AddressSpace *space,
+                         uint64_t address,
+                         unsigned size,
+                         uint64_t value,
+                         Error *err)
+{
+    uint64_t offset;
+
+    if (!address_space_translate(space, address, size, &offset, err))
+    {
+        return false;
+    }
+
+    return memory_region_write(space->region, offset, size, value, err);
 }

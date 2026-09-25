@@ -607,6 +607,36 @@ static void test_address_space_boundaries(void)
     }
 }
 
+static void test_address_space_read_and_write(void)
+{
+    Error err;
+    MemoryRegion region;
+    TestRegisterDevice device = {.status = 0x12345678};
+    AddressSpace space = {.base = 0x1000, .region = &region};
+    uint64_t value;
+
+    error_clear(&err);
+    memory_region_init_io(&region, 8, &test_register_ops, &device);
+
+    assert(address_space_read(&space, 0x1004, 4, &value, &err));
+    assert(value == 0x12345678);
+
+    assert(address_space_write(&space, 0x1000, 4, 0x1234, &err));
+    assert(address_space_read(&space, 0x1000, 4, &value, &err));
+    assert(value == 0x1234);
+
+    error_clear(&err);
+    assert(!address_space_write(&space, 0x1004, 4, 0x1234, &err));
+    assert(!strcmp(err.message, "status register is read-only"));
+
+    error_clear(&err);
+    assert(!address_space_read(&space, 0x1008, 4, &value, &err));
+    assert(!strcmp(err.message, "memory access out of bounds"));
+
+    error_clear(&err);
+    assert(!address_space_write(&space, 0x1004, 4, 0x1234, &err));
+}
+
 int main(void)
 {
     type_system_init();
@@ -626,6 +656,7 @@ int main(void)
     test_memory_region_io();
     test_address_space_translation();
     test_address_space_boundaries();
+    test_address_space_read_and_write();
 
     return 0;
 }
