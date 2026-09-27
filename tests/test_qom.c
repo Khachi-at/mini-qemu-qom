@@ -450,6 +450,8 @@ typedef struct TestRegisterDevice
 {
     uint32_t control;
     uint32_t status;
+    unsigned reads;
+    unsigned writes;
 } TestRegisterDevice;
 
 static uint64_t test_register_read(void *opaque,
@@ -458,6 +460,7 @@ static uint64_t test_register_read(void *opaque,
 {
     TestRegisterDevice *device = opaque;
 
+    device->reads++;
     assert(size == 4);
     switch (offset)
     {
@@ -480,6 +483,7 @@ static bool test_register_write(void *opaque,
 {
     TestRegisterDevice *device = opaque;
 
+    device->writes++;
     assert(size == 4);
 
     switch (offset)
@@ -542,14 +546,19 @@ static void test_address_space_translation(void)
     Error err;
     MemoryRegion region;
     TestRegisterDevice device = {.status = 0x12345678};
-    AddressSpace space = {.base = 0x1000, .region = &region};
+    AddressSpace space;
+    MemoryRegion *matched = NULL;
     uint64_t offset, value;
 
     error_clear(&err);
     memory_region_init_io(&region, 8, &test_register_ops, &device);
-    assert(address_space_translate(&space, 0x1004, 4, &offset, &err));
+    address_space_init(&space);
+    assert(address_space_add_region(&space, 0x1000, &region, &err));
+    assert(address_space_translate(&space, 0x1004, 4,
+                                   &matched, &offset, &err));
+    assert(matched == &region);
     assert(offset == 4);
-    assert(memory_region_read(space.region, offset, 4, &value, &err));
+    assert(memory_region_read(matched, offset, 4, &value, &err));
     assert(value == 0x12345678);
 }
 
@@ -563,45 +572,52 @@ static void test_address_space_boundaries(void)
         unsigned size;
         bool valid;
         uint64_t expected_offset;
+        const char *error;
     } cases[] = {
         /* First byte, last byte, and whole region. */
-        {0x1000, 8, 0x1000, 1, true, 0},
-        {0x1000, 8, 0x1007, 1, true, 7},
-        {0x1000, 8, 0x1000, 8, true, 0},
+        {0x1000, 8, 0x1000, 1, true, 0, NULL},
+        {0x1000, 8, 0x1007, 1, true, 7, NULL},
+        {0x1000, 8, 0x1000, 8, true, 0, NULL},
 
         /* Before, after, and crossing the region boundary. */
-        {0x1000, 8, 0x0fff, 1, false, 0},
-        {0x1000, 8, 0x1008, 1, false, 0},
-        {0x1000, 8, 0x1004, 8, false, 0},
-        {0x1000, 0, 0x1000, 1, false, 0},
+        {0x1000, 8, 0x0fff, 1, false, 0, "address is not mapped"},
+        {0x1000, 8, 0x1008, 1, false, 0, "address is not mapped"},
+        {0x1000, 8, 0x1004, 8, false, 0, "memory access out of bounds"},
 
         /* A region ending at UINT64_MAX is valid. */
-        {UINT64_MAX - 7, 8, UINT64_MAX, 1, true, 7},
+        {UINT64_MAX - 7, 8, UINT64_MAX, 1, true, 7, NULL},
+        {UINT64_MAX, 1, UINT64_MAX, 1, true, 0, NULL},
 
-        /* The access or mapping must not wrap around. */
-        {UINT64_MAX - 7, 8, UINT64_MAX, 2, false, 0},
-        {UINT64_MAX - 3, 8, UINT64_MAX - 3, 1, false, 0},
+        /* An access must not wrap around. */
+        {UINT64_MAX - 7, 8, UINT64_MAX, 2, false, 0,
+         "memory access out of bounds"},
     };
 
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
     {
         Error err;
         MemoryRegion region = {.size = cases[i].length};
-        AddressSpace space = {.base = cases[i].base, .region = &region};
+        AddressSpace space;
+        MemoryRegion sentinel = {0};
+        MemoryRegion *matched = &sentinel;
         uint64_t offset = UINT64_MAX;
 
         error_clear(&err);
+        address_space_init(&space);
+        assert(address_space_add_region(&space, cases[i].base, &region, &err));
         bool ok = address_space_translate(
-            &space, cases[i].address, cases[i].size, &offset, &err);
+            &space, cases[i].address, cases[i].size, &matched, &offset, &err);
 
         assert(ok == cases[i].valid);
         if (ok)
         {
+            assert(matched == &region);
             assert(offset == cases[i].expected_offset);
         }
         else
         {
-            assert(!strcmp(err.message, "memory access out of bounds"));
+            assert(!strcmp(err.message, cases[i].error));
+            assert(matched == &sentinel);
             assert(offset == UINT64_MAX);
         }
     }
@@ -612,11 +628,13 @@ static void test_address_space_read_and_write(void)
     Error err;
     MemoryRegion region;
     TestRegisterDevice device = {.status = 0x12345678};
-    AddressSpace space = {.base = 0x1000, .region = &region};
+    AddressSpace space;
     uint64_t value;
 
     error_clear(&err);
     memory_region_init_io(&region, 8, &test_register_ops, &device);
+    address_space_init(&space);
+    assert(address_space_add_region(&space, 0x1000, &region, &err));
 
     assert(address_space_read(&space, 0x1004, 4, &value, &err));
     assert(value == 0x12345678);
@@ -628,13 +646,195 @@ static void test_address_space_read_and_write(void)
     error_clear(&err);
     assert(!address_space_write(&space, 0x1004, 4, 0x1234, &err));
     assert(!strcmp(err.message, "status register is read-only"));
+    assert(device.status == 0x12345678);
 
     error_clear(&err);
     assert(!address_space_read(&space, 0x1008, 4, &value, &err));
-    assert(!strcmp(err.message, "memory access out of bounds"));
+    assert(!strcmp(err.message, "address is not mapped"));
 
     error_clear(&err);
-    assert(!address_space_write(&space, 0x1004, 4, 0x1234, &err));
+    assert(!address_space_write(&space, 0x1008, 4, 0x1234, &err));
+    assert(!strcmp(err.message, "address is not mapped"));
+}
+
+static void assert_address_unmapped(const AddressSpace *space, uint64_t address)
+{
+    Error err;
+    MemoryRegion sentinel = {0};
+    MemoryRegion *matched = &sentinel;
+    uint64_t offset = UINT64_MAX;
+
+    error_clear(&err);
+    assert(!address_space_translate(space, address, 1, &matched, &offset, &err));
+    assert(!strcmp(err.message, "address is not mapped"));
+    assert(matched == &sentinel);
+    assert(offset == UINT64_MAX);
+}
+
+static void test_address_space_multiple_regions(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion regions[2];
+    TestRegisterDevice devices[2] = {
+        {.status = 0x11111111},
+        {.status = 0x22222222},
+    };
+    uint64_t value;
+
+    error_clear(&err);
+    address_space_init(&space);
+    assert_address_unmapped(&space, 0x1000);
+    memory_region_init_io(&regions[0], 8, &test_register_ops, &devices[0]);
+    memory_region_init_io(&regions[1], 8, &test_register_ops, &devices[1]);
+
+    /* Lookup must not depend on ascending registration order. */
+    assert(address_space_add_region(&space, 0x2000, &regions[1], &err));
+    assert(address_space_add_region(&space, 0x1000, &regions[0], &err));
+    assert(address_space_read(&space, 0x1004, 4, &value, &err));
+    assert(value == devices[0].status);
+    assert(address_space_read(&space, 0x2004, 4, &value, &err));
+    assert(value == devices[1].status);
+
+    assert(address_space_write(&space, 0x1000, 4, 0x1234, &err));
+    assert(devices[0].control == 0x1234);
+    assert(devices[1].control == 0);
+    assert(address_space_write(&space, 0x2000, 4, 0x5678, &err));
+    assert(devices[0].control == 0x1234);
+    assert(devices[1].control == 0x5678);
+    assert_address_unmapped(&space, 0x1800);
+
+    value = UINT64_MAX;
+    error_clear(&err);
+    assert(!address_space_read(&space, 0x1800, 4, &value, &err));
+    assert(!strcmp(err.message, "address is not mapped"));
+    assert(value == UINT64_MAX);
+    error_clear(&err);
+    assert(!address_space_write(&space, 0x1800, 4, 0, &err));
+    assert(!strcmp(err.message, "address is not mapped"));
+    assert(devices[0].reads == 1 && devices[1].reads == 1);
+    assert(devices[0].writes == 1 && devices[1].writes == 1);
+}
+
+static void test_address_space_overlapping_regions(void)
+{
+    static const struct
+    {
+        uint64_t base;
+        uint64_t size;
+    } cases[] = {
+        {0x1000, 8},  /* Same range. */
+        {0x0ffc, 8},  /* Overlap from below. */
+        {0x1004, 8},  /* Overlap from above. */
+        {0x1002, 2},  /* New mapping inside old mapping. */
+        {0x0ffc, 16}, /* New mapping contains old mapping. */
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        Error err;
+        AddressSpace space;
+        MemoryRegion first = {.size = 8};
+        MemoryRegion second = {.size = cases[i].size};
+        MemoryRegion *matched = NULL;
+        uint64_t offset;
+
+        error_clear(&err);
+        address_space_init(&space);
+        assert(address_space_add_region(&space, 0x1000, &first, &err));
+        assert(!address_space_add_region(&space, cases[i].base, &second, &err));
+        assert(!strcmp(err.message, "memory region overlaps existing mapping"));
+        assert(address_space_translate(&space, 0x1000, 8,
+                                       &matched, &offset, &err));
+        assert(matched == &first && offset == 0);
+        assert_address_unmapped(&space, 0x0fff);
+        assert_address_unmapped(&space, 0x1008);
+    }
+}
+
+static void test_address_space_adjacent_regions(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion regions[2];
+    TestRegisterDevice devices[2] = {{.status = 1}, {.control = 2}};
+    uint64_t value;
+
+    error_clear(&err);
+    address_space_init(&space);
+    for (size_t i = 0; i < 2; i++)
+    {
+        memory_region_init_io(&regions[i], 8, &test_register_ops, &devices[i]);
+        assert(address_space_add_region(&space, 0x1000 + i * 8,
+                                        &regions[i], &err));
+    }
+    assert(address_space_read(&space, 0x1004, 4, &value, &err));
+    assert(value == 1);
+    assert(address_space_read(&space, 0x1008, 4, &value, &err));
+    assert(value == 2);
+
+    value = UINT64_MAX;
+    assert(!address_space_read(&space, 0x1004, 8, &value, &err));
+    assert(!strcmp(err.message, "memory access out of bounds"));
+    assert(value == UINT64_MAX);
+    error_clear(&err);
+    assert(!address_space_write(&space, 0x1004, 8, 0, &err));
+    assert(!strcmp(err.message, "memory access out of bounds"));
+    assert(devices[0].reads == 1 && devices[1].reads == 1);
+    assert(devices[0].writes == 0 && devices[1].writes == 0);
+}
+
+static void test_address_space_invalid_mapping(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion empty = {.size = 0};
+    MemoryRegion region = {.size = 8};
+
+    error_clear(&err);
+    address_space_init(&space);
+    assert(!address_space_add_region(NULL, 0, &region, &err));
+    assert(!strcmp(err.message, "invalid address space mapping"));
+    error_clear(&err);
+    assert(!address_space_add_region(&space, 0, NULL, &err));
+    assert(!strcmp(err.message, "invalid address space mapping"));
+    error_clear(&err);
+    assert(!address_space_add_region(&space, 0, &empty, &err));
+    assert(!strcmp(err.message, "invalid address space mapping"));
+    error_clear(&err);
+    assert(!address_space_add_region(&space, UINT64_MAX - 3, &region, &err));
+    assert(!strcmp(err.message, "invalid address space mapping"));
+    assert_address_unmapped(&space, 0);
+    assert_address_unmapped(&space, UINT64_MAX);
+    assert(address_space_add_region(&space, 0, &region, &err));
+}
+
+static void test_address_space_capacity(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion regions[MINIQOM_MAX_ADDRESS_SPACE_REGIONS + 1];
+
+    error_clear(&err);
+    address_space_init(&space);
+    for (size_t i = 0; i < MINIQOM_MAX_ADDRESS_SPACE_REGIONS; i++)
+    {
+        regions[i] = (MemoryRegion){.size = 8};
+        assert(address_space_add_region(&space, i * 16, &regions[i], &err));
+    }
+    regions[MINIQOM_MAX_ADDRESS_SPACE_REGIONS] = (MemoryRegion){.size = 8};
+    assert(!address_space_add_region(&space, MINIQOM_MAX_ADDRESS_SPACE_REGIONS * 16,
+                                     &regions[MINIQOM_MAX_ADDRESS_SPACE_REGIONS], &err));
+    assert(!strcmp(err.message, "address space is full"));
+    assert_address_unmapped(&space, MINIQOM_MAX_ADDRESS_SPACE_REGIONS * 16);
+    for (size_t i = 0; i < MINIQOM_MAX_ADDRESS_SPACE_REGIONS; i++)
+    {
+        MemoryRegion *matched = NULL;
+        uint64_t offset = UINT64_MAX;
+        assert(address_space_translate(&space, i * 16, 8,
+                                       &matched, &offset, &err));
+        assert(matched == &regions[i] && offset == 0);
+    }
 }
 
 int main(void)
@@ -657,6 +857,11 @@ int main(void)
     test_address_space_translation();
     test_address_space_boundaries();
     test_address_space_read_and_write();
+    test_address_space_multiple_regions();
+    test_address_space_overlapping_regions();
+    test_address_space_adjacent_regions();
+    test_address_space_invalid_mapping();
+    test_address_space_capacity();
 
     return 0;
 }
