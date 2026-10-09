@@ -41,4 +41,8 @@ bool address_space_write(const AddressSpace *space,
                          uint64_t value,
                          Error *err);
 
+bool address_space_remove_region(AddressSpace *space,
+                                 uint64_t base,
+                                 Error *err);
+
 #endif

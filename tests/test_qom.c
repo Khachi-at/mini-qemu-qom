@@ -837,6 +837,190 @@ static void test_address_space_capacity(void)
     }
 }
 
+static void test_address_space_remove_region(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion region = {.size = 16};
+
+    error_clear(&err);
+    address_space_init(&space);
+    assert(address_space_add_region(&space, 0x1000,
+                                    &region, &err));
+
+    MemoryRegion *matched = NULL;
+    uint64_t offset = UINT64_MAX;
+    assert(address_space_translate(&space, 0x1000, 16,
+                                   &matched, &offset, &err));
+    assert(matched == &region && offset == 0);
+
+    error_clear(&err);
+    assert(address_space_remove_region(&space, 0x1000, &err));
+
+    error_clear(&err);
+    assert(!address_space_translate(&space, 0x1000, 16,
+                                    &matched, &offset, &err));
+    assert(!strcmp(err.message, "address is not mapped"));
+
+    error_clear(&err);
+    assert(!address_space_remove_region(&space, 0x1000, &err));
+    assert(!strcmp(err.message, "mapping not found"));
+
+    error_clear(&err);
+    assert(!address_space_remove_region(NULL, 0x1000, &err));
+    assert(!strcmp(err.message, "invalid address space arguments"));
+}
+
+static void test_address_space_remove_preserves_other_regions(void)
+{
+    for (size_t removed = 0; removed < 3; removed++)
+    {
+        Error err;
+        AddressSpace space;
+        MemoryRegion regions[3];
+        TestRegisterDevice devices[3] = {
+            {.status = 11}, {.status = 22}, {.status = 33},
+        };
+        uint64_t value = UINT64_MAX;
+        uint64_t removed_base = 0x1000 + removed * 0x100;
+
+        error_clear(&err);
+        address_space_init(&space);
+        for (size_t i = 0; i < 3; i++)
+        {
+            memory_region_init_io(&regions[i], 8, &test_register_ops, &devices[i]);
+            assert(address_space_add_region(&space, 0x1000 + i * 0x100,
+                                            &regions[i], &err));
+        }
+
+        assert(address_space_remove_region(&space, removed_base, &err));
+        assert_address_unmapped(&space, removed_base);
+        assert(!address_space_read(&space, removed_base + 4, 4, &value, &err));
+        assert(!strcmp(err.message, "address is not mapped"));
+        assert(value == UINT64_MAX);
+        error_clear(&err);
+        assert(!address_space_write(&space, removed_base, 4, 99, &err));
+        assert(!strcmp(err.message, "address is not mapped"));
+        assert(devices[removed].reads == 0);
+        assert(devices[removed].writes == 0);
+        assert(devices[removed].control == 0);
+
+        for (size_t i = 0; i < 3; i++)
+        {
+            if (i == removed)
+            {
+                continue;
+            }
+            uint64_t base = 0x1000 + i * 0x100;
+            error_clear(&err);
+            assert(address_space_read(&space, base + 4, 4, &value, &err));
+            assert(value == devices[i].status);
+            assert(address_space_write(&space, base, 4, 100 + i, &err));
+            assert(devices[i].control == 100 + i);
+            assert(address_space_read(&space, base, 4, &value, &err));
+            assert(value == 100 + i);
+        }
+    }
+}
+
+static void test_address_space_remove_requires_exact_base(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion region;
+    TestRegisterDevice device = {.status = 0x12345678};
+    uint64_t value;
+    const uint64_t invalid_bases[] = {0x1004, 0x1008, 0x2000};
+
+    error_clear(&err);
+    address_space_init(&space);
+    memory_region_init_io(&region, 8, &test_register_ops, &device);
+    assert(address_space_add_region(&space, 0x1000, &region, &err));
+
+    for (size_t i = 0; i < sizeof(invalid_bases) / sizeof(invalid_bases[0]); i++)
+    {
+        error_clear(&err);
+        assert(!address_space_remove_region(&space, invalid_bases[i], &err));
+        assert(!strcmp(err.message, "mapping not found"));
+        assert(address_space_read(&space, 0x1004, 4, &value, &err));
+        assert(value == 0x12345678);
+        assert(address_space_write(&space, 0x1000, 4, i + 1, &err));
+        assert(device.control == i + 1);
+    }
+    assert(address_space_remove_region(&space, 0x1000, &err));
+    assert_address_unmapped(&space, 0x1000);
+}
+
+static void test_address_space_remove_restores_capacity(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion regions[MINIQOM_MAX_ADDRESS_SPACE_REGIONS];
+    MemoryRegion replacement = {.size = 8};
+    MemoryRegion extra = {.size = 8};
+    size_t removed = MINIQOM_MAX_ADDRESS_SPACE_REGIONS / 2;
+
+    error_clear(&err);
+    address_space_init(&space);
+    for (size_t i = 0; i < MINIQOM_MAX_ADDRESS_SPACE_REGIONS; i++)
+    {
+        regions[i] = (MemoryRegion){.size = 8};
+        assert(address_space_add_region(&space, i * 16, &regions[i], &err));
+    }
+
+    assert(address_space_remove_region(&space, removed * 16, &err));
+    assert_address_unmapped(&space, removed * 16);
+    assert(address_space_add_region(&space, removed * 16, &replacement, &err));
+
+    for (size_t i = 0; i < MINIQOM_MAX_ADDRESS_SPACE_REGIONS; i++)
+    {
+        MemoryRegion *matched = NULL;
+        uint64_t offset = UINT64_MAX;
+        assert(address_space_translate(&space, i * 16, 8,
+                                       &matched, &offset, &err));
+        assert(matched == (i == removed ? &replacement : &regions[i]));
+        assert(offset == 0);
+    }
+
+    assert(!address_space_add_region(&space, MINIQOM_MAX_ADDRESS_SPACE_REGIONS * 16,
+                                    &extra, &err));
+    assert(!strcmp(err.message, "address space is full"));
+    assert_address_unmapped(&space, MINIQOM_MAX_ADDRESS_SPACE_REGIONS * 16);
+}
+
+static void test_address_space_remove_one_alias(void)
+{
+    Error err;
+    AddressSpace space;
+    MemoryRegion region;
+    TestRegisterDevice device = {.status = 0x12345678};
+    uint64_t value;
+
+    error_clear(&err);
+    address_space_init(&space);
+    memory_region_init_io(&region, 8, &test_register_ops, &device);
+    assert(address_space_add_region(&space, 0x1000, &region, &err));
+    assert(address_space_add_region(&space, 0x2000, &region, &err));
+    assert(address_space_write(&space, 0x1000, 4, 42, &err));
+    assert(address_space_read(&space, 0x2000, 4, &value, &err));
+    assert(value == 42);
+
+    assert(address_space_remove_region(&space, 0x1000, &err));
+    assert_address_unmapped(&space, 0x1000);
+    assert(address_space_read(&space, 0x2000, 4, &value, &err));
+    assert(value == 42);
+    assert(address_space_write(&space, 0x2000, 4, 84, &err));
+    assert(device.control == 84);
+    assert(address_space_read(&space, 0x2004, 4, &value, &err));
+    assert(value == 0x12345678);
+
+    error_clear(&err);
+    assert(!address_space_remove_region(&space, 0x1000, &err));
+    assert(!strcmp(err.message, "mapping not found"));
+    assert(address_space_read(&space, 0x2000, 4, &value, &err));
+    assert(value == 84);
+}
+
 int main(void)
 {
     type_system_init();
@@ -862,6 +1046,11 @@ int main(void)
     test_address_space_adjacent_regions();
     test_address_space_invalid_mapping();
     test_address_space_capacity();
+    test_address_space_remove_region();
+    test_address_space_remove_preserves_other_regions();
+    test_address_space_remove_requires_exact_base();
+    test_address_space_remove_restores_capacity();
+    test_address_space_remove_one_alias();
 
     return 0;
 }

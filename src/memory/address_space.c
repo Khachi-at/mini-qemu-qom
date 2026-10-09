@@ -56,6 +56,42 @@ bool address_space_add_region(AddressSpace *space,
     return true;
 }
 
+bool address_space_remove_region(AddressSpace *space,
+                                 uint64_t base,
+                                 Error *err)
+{
+    if (!space)
+    {
+        error_set(err, "invalid address space arguments");
+        return false;
+    }
+
+    int matched_index = -1;
+
+    for (size_t i = 0; i < space->count; i++)
+    {
+        if (space->mappings[i].base == base)
+        {
+            matched_index = i;
+            break;
+        }
+    }
+
+    if (matched_index == -1)
+    {
+        error_set(err, "mapping not found");
+        return false;
+    }
+
+    for (size_t i = matched_index + 1; i < space->count; i++)
+    {
+        space->mappings[i - 1] = space->mappings[i];
+    }
+    space->count--;
+
+    return true;
+}
+
 bool address_space_translate(const AddressSpace *space,
                              uint64_t address, unsigned size,
                              MemoryRegion **region,
