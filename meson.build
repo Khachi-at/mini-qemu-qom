@@ -8,6 +8,7 @@ project(
 inc = include_directories('include')
 
 core_sources = files(
+    'src/device/register_device.c',
     'src/memory/address_space.c',
     'src/memory/hostmem.c',
     'src/memory/hostmem_memfd.c',
@@ -34,3 +35,21 @@ test_exe = executable(
 )
 
 test('qom', test_exe)
+
+device_test_exe = executable(
+    'test-register-device',
+    'tests/test_register_device.c',
+    include_directories: inc,
+    link_with: core,
+)
+
+foreach case_name : [
+    'lifecycle',
+    'read-only-status',
+    'configuration-validation',
+    'reconfiguration',
+    'zero-base-configuration-freeze',
+    'mapping-conflict',
+]
+    test('register-device-' + case_name, device_test_exe, args: [case_name])
+endforeach
